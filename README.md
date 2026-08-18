@@ -31,7 +31,7 @@ Ici et dans le reste du script, le choix d'un tableau associatif a été retenu,
 
 La syntaxe : *${!informationsOS[@]}* permet de faire référence à toutes les clés du tableau, soit les chemins relatifs aux fichiers uniques. 
 
-Pour finir, une dernière condition, agissant dans la cas où aucun fichiers unique sur les chemins si dessous n'est trouvé. 
+Pour finir, une dernière condition, agissant dans le cas où aucun fichier unique sur les chemins ci-après n'est trouvé. Cette dernière est essentielle, pour indiquer à l'utilisateur que la distribution de son système n'est pas prise en charge par le script et que son exécution serait donc non pertinente.
 
 ```bash
 declare -A informationsOS
@@ -54,6 +54,9 @@ echo "[INCONNU] Aucun gestionnaire de paquets reconnu n'a été détecté sur ce
 fi
 ```
 
+**Limites connues**
+
+Comme évoqué, une des limites du script réside dans la non-exhaustivité du tableau. En effet ce dernier couvre uniquement les distributions les plus répandues de Linux. Des systèmes plus récents tels que Fedora, NixOS, Void Linux etc. ne sont pas pris en charge. Cette non-exhaustivité a pour conséquence directe que, si aucune distribution n'est reconnue par le script, une grande partie de ce dernier ne peut pas s'exécuter et sera donc non pertinent. 
 
 ### Vérification des mises à jour
 
