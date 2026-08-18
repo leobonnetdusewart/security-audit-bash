@@ -16,6 +16,17 @@ Comment cloner le dépôt et lancer le script concrètement (chmod +x, ./nom_du_
 ## Détail technique
 
 ### Détection du gestionnaire de paquets
+**Pourquoi cette étape est-elle primordiale ?**
+Le point d'entrée de ce projet est la définition du gestionnaire de paquet pris en charge par la distribution Linux du système audité. En effet, comme évoqué plus tôt, la portabilité du script est primordiale, étant donné qu'il est courant, pour un parc informatique, d'utiliser plusieurs distributions Linux. Un outil d'audit fonctionnant sur une seule distribution aurait donc une utilité très limitée. On prendra donc en charge dans ce script les environnements suivants:
+- Debian/Ubuntu
+- Red Hat/CentOS
+- Arch Linux
+- SUSE/openSUSE
+- Alpine Linux
+
+**Choix technique et justification**
+Dans ce contexte et dans le reste du script, le choix d'un tableau associatif à été retenu, par son aspect pratique et dans une démarche de cohérence et d'organisation globale.  
+
 
 ### Vérification des mises à jour
 
