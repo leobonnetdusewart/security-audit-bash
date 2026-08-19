@@ -104,10 +104,15 @@ fi
 ```
 **Limites connues**
 
-Pour des raisons techniques, l'hypothèse selon laquelle une seule ligne d'en-tête n'est présente quand on exécute la commande est vérifiée uniquement avec le gestionnaire "apt". Ce code suit donc le format de la commande "apt list --upgradable" mais ne garantit pas que les autres suivent exactement ce format. Le code devrait s'adapter à chaque distribution Linux prise en charge.
+Pour des raisons techniques, l'hypothèse selon laquelle une seule ligne d'en-tête présente quand on exécute la commande n'est, à ce jour, vérifiée uniquement avec le gestionnaire "apt". Ce code suit donc le format de la commande "apt list --upgradable" mais ne garantit pas que les autres suivent exactement ce format. Le code devrait s'adapter à chaque distribution Linux prise en charge.
 
 Etant donné que ce script est utilisé dans le cadre d'un audit, aucune modification du système ne doit être effectuée, il doit simplement l'analyser. On suppose donc que l'utilisateur a rafraichî manuellement le catalogue de paquets au préalable, si ce n'est pas le cas, cette partie du script pourrait se révéler non pertinente.
 
 ### Légitimité des binaires setuid
+**Pourquoi cette étape ?**
+
+Tout d'abord, il est essentiel de rappeler qu'un setuid est un fichier qui permet d'être exécuté avec des permissions particulières, en des permissions "classiques" de lecture et d'écriture. Quand setuid est activé sur un exécutable, tout utilisateur capable de lancer ce fichier l'exécute automatiquement avec les privilèges du propriétaire du fichier (souvent root) et/ou de son groupe. Cependant, le setuid représente un risque de sécurité élevé pour les systèmes mal configurés. “Si un programme disposant de l'autorisation setuid présente des vulnérabilités ou est mal configuré, il peut être exploité par des utilisateurs malveillants pour obtenir un accès non autorisé à des données sensibles ou effectuer des actions non autorisées avec des privilèges élevés.” (Guide Complet Sur Setuid | Lenovo France, s. d.). 
+
+Un des risques cruciaux relatifs à ce type de fichiers réside dans leur légitimité. En effet, un attaquant ayant déjà obtenu un accès initial à une machine peut lui-même poser le bit setuid sur un binaire qui ne l'avait pas à l'origine, afin de se garantir un moyen simple de récupérer les privilèges root plus tard, même après avoir perdu son accès initial (Red Canary, s. d.). C’est une technique classique de maintien d'accès (persistence) en cybersécurité. 
 
 ### Analyse des comptes à privilèges (UID/GID/shell)
