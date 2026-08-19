@@ -16,7 +16,7 @@ Comment cloner le dépôt et lancer le script concrètement (chmod +x, ./nom_du_
 ## Détail technique
 
 ### Détection du gestionnaire de paquets
-**Pourquoi cette étape est-elle primordiale ?**
+**Pourquoi cette étape ?**
 
 Le point d'entrée de ce projet est la définition du gestionnaire de paquet pris en charge par la distribution Linux du système audité. En effet, comme évoqué plus tôt, la portabilité du script est primordiale, étant donné qu'il est courant, pour un parc informatique, d'utiliser plusieurs distributions Linux. Un outil d'audit fonctionnant sur une seule distribution aurait donc une utilité très limitée. On prendra donc en charge dans ce script les environnements suivants:
 - Debian/Ubuntu
@@ -59,6 +59,54 @@ fi
 Comme évoqué, une des limites du script réside dans la non-exhaustivité du tableau. En effet ce dernier couvre uniquement les distributions les plus répandues de Linux. Des systèmes plus récents tels que Fedora, NixOS, Void Linux etc. ne sont pas pris en charge. Cette non-exhaustivité a pour conséquence directe que, si aucune distribution n'est reconnue par le script, une grande partie de ce dernier ne peut pas s'exécuter et sera donc non pertinent. 
 
 ### Vérification des mises à jour
+**Pourquoi cette étape ?**
+
+Lorsqu'un attaquant s'infiltre dans un réseau, son objectif est de s’assurer qu’il possède assez de permissions pour atteindre ses objectifs, allant à l’encontre des intérêts du propriétaire. Red Canary, dans son rapport sur les techniques de menaces, insiste sur l'importance de la mise à jour des fichiers possédant le bit setuid (Red Canary, s. d.). En effet, les vulnérabilités liées aux setuids sont fréquemment révélées et corrigées, ce type de fichiers pouvant être exploité à des fins malveillantes s'ils présentent une vulnérabilité (notamment une escalade de privilèges non autorisée), on tient à les tenir à jour. 
+
+Un exemple concret: Heartbleed, une vulnérabilité critique de la librairie OpenSSL, permettant à des attaquants d'avoir accès à des données sensibles depuis la mémoire d'un serveur vulnérable. Bien que cette vulnérabilité ait été découverte et corrigée en 2014, elle reste encore aujourd'hui un problème pour les systèmes non à jour, notamment dans le secteur public, financier et de la snaté, reposant fréquemment sur une architecture dépassée et ne supportant pas les dernières mises à jour OpenSSL (Linuxvox, 2026). 
+
+**Choix technique et justification**
+
+Pour rester cohérent et garder un fil conducteur vis-à-vis de la première partie du script, on va ici aussi utiliser un tableau associatif. Cette fois-ci la clé est le gestionnaire de paquets (préalablement défini) et la valeur associée est une commande permettant de visualiser les paquets nécessitant une mise à jour. Le script présente également une condition, enregistrant la commande associée au gestionnaire de paquet dans la variable "maj". 
+
+On utilise ensuite la commande "eval", cruciale pour cette partie du script, étant donné qu'on désire que la commande soit traitée correctement, comme si on la rentrait manuellement dans bash. C'est particulièrement pertinent pour que la redirection : "2>/dev/null" soit bien prise en compte, ce qui n'était pas le cas initialement.
+
+L'utilisation de la variable spéciale "$?" permet de tester si la dernière commande exécutée par le script renvoie une erreur ou non. Si c'est le cas, un message d'erreur sera renvoyé, sinon le script poursuit. C'est important dans ce contexte de tester la fonctionnalité de la commande "eval $maj" pour ne pas qu'on interprète un message d'erreur comme entrée pour la commande "echo "$cbmaj" | wc -l".
+
+Pour calculer le nombre de paquets nécessitant une mise à jour, on utilise "wc -l" qui va compter le nombre de lignes que va renvoyer la commande. C'est cohérent, étant donné que les paquets nécessitant une mise à jour sont affichés un par un, chacun sur sa propre ligne.
+
+Pour finir, une simple condition afin d'afficher à l'utilisateur les informations pertinentes quant à l'audit. Notez ici qu'on affiche "nblignes - 1", correspondant en réalité à la ligne "Listing... Done" s'affichant mais ne représentant pas un paquet nécessitant une mise à jour.
+
+```Bash
+declare -A commandesOS
+commandesOS[yum]="yum check-update 2>/dev/null"
+commandesOS[pacman]="pacman -Qu 2>/dev/null"
+commandesOS[zypp]="zypper list-updates 2>/dev/null"
+commandesOS[apt-get]="apt list --upgradable 2>/dev/null"
+commandesOS[apk]="apk list -u 2>/dev/null"
+
+if [[ -v "commandesOS[$gestionnaire]" ]]; then
+maj=${commandesOS[$gestionnaire]}
+fi
+
+cbmaj=$(eval $maj)
+
+if [[ $? -ne 0 ]]; then
+echo "[ERREUR] Impossible de vérifier les mises à jour pour le gestionn>
+else
+nblignes=$(echo "$cbmaj" | wc -l)
+if [[ $nblignes -eq 1 ]]; then
+echo "[OK] Aucune mise à jour de sécurité en attente pour le gestionnai>
+else
+echo "[ATTENTION] $((nblignes - 1)) paquet(s) en attente de mise à jour>
+fi
+fi
+```
+**Limites connues**
+
+Pour des raisons techniques, l'hypothèse selon laquelle une seule ligne d'en-tête n'est présente quand on exécute la commande est vérifiée uniquement avec le gestionnaire "apt". Ce code suit donc le format de la commande "apt list --upgradable" mais ne garantit pas que les autres suivent exactement ce format. Le code devrait s'adapter à chaque distribution Linux prise en charge.
+
+Etant donné que ce script est utilisé dans le cadre d'un audit, aucune modification du système ne doit être effectuée, il doit simplement l'analyser. On suppose donc que l'utilisateur a rafraichî manuellement le catalogue de paquets au préalable, si ce n'est pas le cas, cette partie du script pourrait se révéler non pertinente.
 
 ### Légitimité des binaires setuid
 
