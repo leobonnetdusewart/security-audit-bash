@@ -111,8 +111,53 @@ Etant donné que ce script est utilisé dans le cadre d'un audit, aucune modific
 ### Légitimité des binaires setuid
 **Pourquoi cette étape ?**
 
-Tout d'abord, il est essentiel de rappeler qu'un setuid est un mécanisme, qui posé sur un fichier exécutable permet d'octroyer des permissions particulières, en plus des permissions "classiques" de lecture et d'écriture. Quand setuid est activé sur un exécutable, tout utilisateur capable de lancer ce fichier l'exécute automatiquement avec les privilèges du propriétaire du fichier (souvent root) et/ou de son groupe. Cependant, le setuid représente un risque de sécurité élevé pour les systèmes mal configurés. “Si un programme disposant de l'autorisation setuid présente des vulnérabilités ou est mal configuré, il peut être exploité par des utilisateurs malveillants pour obtenir un accès non autorisé à des données sensibles ou effectuer des actions non autorisées avec des privilèges élevés.” (Guide Complet Sur Setuid | Lenovo France, s. d.). 
+Tout d'abord, il est essentiel de rappeler qu'un setuid est un mécanisme qui, posé sur un fichier exécutable, permet d'octroyer des permissions particulières, en plus des permissions "classiques" de lecture et d'écriture. Quand setuid est activé sur un exécutable, tout utilisateur capable de lancer ce fichier l'exécute automatiquement avec les privilèges du propriétaire du fichier (souvent root) et/ou de son groupe. Cependant, le setuid représente un risque de sécurité élevé pour les systèmes mal configurés. “Si un programme disposant de l'autorisation setuid présente des vulnérabilités ou est mal configuré, il peut être exploité par des utilisateurs malveillants pour obtenir un accès non autorisé à des données sensibles ou effectuer des actions non autorisées avec des privilèges élevés.” (Guide Complet Sur Setuid | Lenovo France, s. d.). 
 
 Un des risques cruciaux relatifs à ce type de fichiers réside dans leur légitimité. En effet, un attaquant ayant déjà obtenu un accès initial à une machine peut lui-même poser le bit setuid sur un binaire qui ne l'avait pas à l'origine, afin de se garantir un moyen simple de récupérer les privilèges root plus tard, même après avoir perdu son accès initial (Red Canary, s. d.). C’est une technique classique de maintien d'accès (persistence) en cybersécurité. 
+
+D’après The Linux Documentation Project, un très bon moyen de détecter une attaque locale sur un système est donc de vérifier fréquemment l’intégrité des binaires de haute importance, tels que les setuid (Files And File System Security, s. d.). Il est important également de préciser qu’un setuid illégitime n’est pas forcément malveillant par nature et a très bien pu être ajouté par un administrateur, ici on cherche surtout à prévenir les attaques et à indiquer les points de vigilance, pas à juger si un fichier est malveillant ou non. Le script va donc permettre d'analyser les setuid présents dans le système audité et de définir s'ils sont rattachés à un paquet officiel ou non, auquel cas potentiellement problématiques quant à la sécurité du système. 
+
+**Choix technique et justification**
+
+La première substitution de commande dans la variable *"std"* permet d'afficher les chemins relatifs aux fichiers avec le bit setuid d'activé, 4000 étant la représentation octale de ce dernier. L’utilisation de l’option “-xdev” n’est pas anodine. En effet, la première version de la commande ne présentait pas cette caractéristique, et le script analysait une quantité faramineuse de fichiers, prenant un temps considérable avant de donner un résultat. “-xdev” permet de résoudre ce souci, en empêchant find de “descendre” dans un système de fichiers différent de celui du point de départ.
+
+Une nouvelle fois, l'utilisation d'un tableau associatif est retenue, avec pour clé, le gestionnaire de paquets défini dès la première étape du script, et avec comme valeur, une commande propre au gestionnaire. Ces commandes servent toutes le même objectif, couplées avec le chemin d'un fichier, elles permettent de définir si un fichier est rattaché à un paquet officiel.
+
+Une boucle va ensuite tester chaque fichier avec la commande variable *$com "$fichier"*, c'est donc l'accouplement de la commande présente en valeur dans notre tableau, ainsi que le chemin du fichier pour lequel elle s'applique. La variable spéciale *$?* est à nouveau utilisée, testant si la commande précédente renvoie un code de sortie différent de 0 (relatif donc à un échec). Ces fichiers, dont la commande renverrait donc un échec, sont qualifiés donc comme potentiellement illégitimes étant donné qu'ils ne sont rattachés à aucun paquet officiel.
+
+```bash
+std=$(find / -xdev -perm -4000 -type f 2>/dev/null)
+
+declare -A proprio
+proprio[yum]="rpm -qf"
+proprio[pacman]="pacman -Qo"
+proprio[zypp]="zypper what-provides"
+proprio[apt-get]="dpkg -S"
+proprio[apk]="apk info --who-owns"
+
+if [[ -v "proprio[$gestionnaire]" ]]; then
+com=${proprio[$gestionnaire]}
+fi
+
+for fichier in $std
+do
+resultat=$(eval $com "$fichier" 2>/dev/null)
+if [[ $? -ne 1 ]]; then
+compteur=$((compteur + 1))
+fi
+done
+
+if [[ $compteur -eq 0 ]]; then
+echo "[OK] Aucun binaire setuid non officiel détecté."
+else
+echo "[ATTENTION] $compteur binaire(s) setuid non rattaché(s) à un paquet officiel ont été détectés sur ce système. Vérification manuelle requise."
+```
+**Limites connues**
+
+Comme évoqué plus tôt, ce script permet d'identifier combien de setuid ne sont pas rattachés à des paquets officiels. Cependant il ne permet pas de qualifier la légitimité d'un fichier dans la mesure où ce dernier a été rajouté manuellement par un administrateur. Le script compense cette limite en alertant l'utilisateur plutôt qu'en tranchant lui-même. Il permet donc d'envoyer un "rappel" à l'utilisateur pour qu'il vérifie ses setuid et qu'il s'assure qu'ils sont bien légitimes (dans le cas où des fichiers non rattachés à des paquets sont détectés).  
+
+L'utilisation de l'option *xdev*, bien que nécessaire pour garantir la performance du script, limite le champ de recherche de *find*, qui pourrait potentiellement laisser des binaires setuid cachés non détectés.
+
+Pour finir, la détection du gestionnaire de paquet de la première étape du script est essentielle à l'exécution de cette partie. Dans le cas où l'utilisateur utiliserait une distribution différente des 5 couvertes ici, cette partie ne pourrait donc pas être appliquée sur son système. 
 
 ### Analyse des comptes à privilèges (UID/GID/shell)
