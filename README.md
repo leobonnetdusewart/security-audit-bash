@@ -161,3 +161,19 @@ L'utilisation de l'option *xdev*, bien que nécessaire pour garantir la performa
 Pour finir, la détection du gestionnaire de paquet de la première étape du script est essentielle à l'exécution de cette partie. Dans le cas où l'utilisateur utiliserait une distribution différente des 5 couvertes ici, cette partie ne pourrait donc pas être appliquée sur son système. 
 
 ### Analyse des comptes à privilèges (UID/GID/shell)
+**Pourquoi cette étape ?**
+
+"Le fichier /etc/passwd est une base de données textuelle d'informations sur les utilisateurs qui peuvent se connecter au système. Le fichier /etc/passwd est un fichier texte, chaque enregistrement décrivant un compte d'utilisateur. Chaque enregistrement se compose de sept champs séparés par un deux-points." (Wikipédia, s. d.). Les 7 champs affichent les informations suivantes, dans l'ordre: 
+- Le nom de l'utilisateur (login name)
+- Les informations relatives au mot de passe de l'utilisateur (généralement "x", le mot de passe étant stocké dans un autre fichier)
+- L'identifiant utilisateur, aussi appelé "UID"
+- L'identifiant de groupe, aussi appelé "GID"
+- Un champ dédié à un commentaire concernant la personne ou le compte
+- Le chemin vers le répertoire personnel de l'utilisateur
+- le programme qui est lancé chaque fois que l'utilisateur se connecte au système. Pour un utilisateur interactif, il s'agit généralement d'une interface en ligne de commande.
+
+Les trois champs qui vont nous intéresser et être pertinents pour notre audit, sont ceux relatifs aux droits des utilisateurs (UID/GID) et celui relatif au shell de l'utilisateur. 
+
+Il est crucial de vérifier qu'aucun utilisateur ne possède les mêmes droits que root (UID/GID=0) pour garantir la sécurité du système. En effet, un accès total et sans restriction à ce dernier permettrait à un utilisateur de lire, modifier ou supprimer absolument n'importe quel fichier sur le système. Un UID de 0 permettrait également à un attaquant de créer, modifier ou ajouter des utilisateurs, agir sur leurs mots de passe, supprimer des logs (donc des traces de son intrusion), ou encore d'installer n'importe quel logiciel avec n'importe quel niveau de privilèges. Ça représenterait donc un danger imminent pour le propriétaire du système, d'où l'importance de le détecter.
+
+Vérifier l'existence de shells interactifs pour des utilisateurs système est également cohérente avec notre objectif d'audit. En effet, ces comptes sont censés exister pour faire tourner un service précis et non pas pour qu'un humain/attaquant s'y connecte. La présence d'un shell interactif pour un de ces comptes (/bin/bash au lieu de /usr/sbin/nologin), pourrait représenter une véritable porte d'entrée exploitable. 
