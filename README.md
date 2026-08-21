@@ -163,7 +163,7 @@ Pour finir, la détection du gestionnaire de paquet de la première étape du sc
 ### Analyse des comptes à privilèges (UID/GID/shell)
 **Pourquoi cette étape ?**
 
-"Le fichier /etc/passwd est une base de données textuelle d'informations sur les utilisateurs qui peuvent se connecter au système. Le fichier /etc/passwd est un fichier texte, chaque enregistrement décrivant un compte d'utilisateur. Chaque enregistrement se compose de sept champs séparés par un deux-points." (Wikipédia, s. d.). Les 7 champs affichent les informations suivantes, dans l'ordre: 
+Le fichier /etc/passwd est une base de données comportant des informations réparties en 7 champs distincts, concernant les utilisateurs du système. D'après Wikipédia, les champs affichent les informations suivantes, dans l'ordre: 
 - Le nom de l'utilisateur (login name)
 - Les informations relatives au mot de passe de l'utilisateur (généralement "x", le mot de passe étant stocké dans un autre fichier)
 - L'identifiant utilisateur, aussi appelé "UID"
@@ -174,6 +174,9 @@ Pour finir, la détection du gestionnaire de paquet de la première étape du sc
 
 Les trois champs qui vont nous intéresser et être pertinents pour notre audit, sont ceux relatifs aux droits des utilisateurs (UID/GID) et celui relatif au shell de l'utilisateur. 
 
-Il est crucial de vérifier qu'aucun utilisateur ne possède les mêmes droits que root (UID/GID=0) pour garantir la sécurité du système. En effet, un accès total et sans restriction à ce dernier permettrait à un utilisateur de lire, modifier ou supprimer absolument n'importe quel fichier sur le système. Un UID de 0 permettrait également à un attaquant de créer, modifier ou ajouter des utilisateurs, agir sur leurs mots de passe, supprimer des logs (donc des traces de son intrusion), ou encore d'installer n'importe quel logiciel avec n'importe quel niveau de privilèges. Ça représenterait donc un danger imminent pour le propriétaire du système, d'où l'importance de le détecter.
+Il est crucial de vérifier qu'aucun utilisateur ne possède les mêmes droits que root (UID=0) pour garantir la sécurité du système. En effet, un accès total et sans restriction à ce dernier permettrait à un utilisateur de lire, modifier ou supprimer absolument n'importe quel fichier sur le système. Un UID de 0 permettrait également à un attaquant de créer, modifier ou ajouter des utilisateurs, agir sur leurs mots de passe, supprimer des logs (donc des traces de son intrusion), ou encore d'installer n'importe quel logiciel avec n'importe quel niveau de privilèges. Ça représenterait donc un danger imminent pour le propriétaire du système, d'où l'importance de le détecter.
+
+Dans les mêmes raisons, le script va également identifier les groupe d'utilisateurs possédant les droits root (GID=0), pour éviter qu'un groupe ait accès à des fichiers/dossiers réservés à l'administration. Appartenir au groupe root est bien moins "grave" qu'avoir un UID de 0 et peut totalement être légitime pour un administrateur, il reste néanmoins intéressant de vérifier manuellement la légitimité des utilisateurs possédants cette caractéristique.
 
 Vérifier l'existence de shells interactifs pour des utilisateurs système est également cohérente avec notre objectif d'audit. En effet, ces comptes sont censés exister pour faire tourner un service précis et non pas pour qu'un humain/attaquant s'y connecte. La présence d'un shell interactif pour un de ces comptes (/bin/bash au lieu de /usr/sbin/nologin), pourrait représenter une véritable porte d'entrée exploitable. 
+
