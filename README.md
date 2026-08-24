@@ -273,8 +273,8 @@ fi
 
 **Limites connues**
 
-La principale limite de cette partie du script réside dans l'incertitude gravitant autour du fichier */etc/login.defs*, tant on ne peut pas anticiper sa prédisposition sans avoir accès à l'ensemble des distributions traitées dans ce script, représentant une véritable faille, bien qu'une valeur de référence soit utilisée et qu'une indication apparait à l'utilisateur. 
+La principale limite de cette partie du script réside dans l'incertitude gravitant autour du fichier */etc/login.defs*, tant on ne peut pas anticiper sa disposition sans avoir accès à l'ensemble des distributions traitées dans ce script, représentant une limite, bien qu'une valeur de référence soit utilisée et qu'une indication apparait à l'utilisateur. 
 
-Ensuite, le script permet d'afficher et de signaler un nombre d'utilisateurs possédants des droit égaux à root (UID) et des groupes d'utilisateurs (GID), mais ne permet pas de juger la légitimité des utilisateurs.
+Ensuite, le script permet d'afficher et de signaler un nombre d'utilisateurs possédant des droits égaux à root (UID) et des groupes d'utilisateurs (GID), mais ne permet pas de juger la légitimité des utilisateurs.
 
-La condition permettant d'exclure root du compteur *nb_systeme_shell_risque*, teste que le nom de l'utilisateur soit *"root"*. Si sur un système particulier un administrateur aurait changé le nom d'un utilisateur pour l'appeler ainsi, alors cette partie du script ne serait pas pertinente (même si cette option est très peu probable, ça reste une limite à souligner). 
+La condition permettant d'exclure root du compteur *nb_systeme_shell_risque*, teste que le nom de l'utilisateur soit *"root"*. Si sur un système particulier un administrateur avait changé le nom d'un utilisateur pour l'appeler "root", alors cette partie du script ne serait pas pertinente (même si cette option est très peu probable, ça reste une limite à souligner). 
