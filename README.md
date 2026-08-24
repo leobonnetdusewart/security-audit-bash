@@ -187,6 +187,11 @@ Le script va en plus vérifier l'existence de shells interactifs pour n'importe 
 
 L'utilisation de la commande *awk* est particulièrement pertinente dans le contexte actuel, tant cette commande permet, une fois couplée avec l'option *-F*, de traiter du texte structuré en colonnes/champs, en prenant en compte le séparateur de champs (ici ":"). Elle permet donc d'afficher le 3ème (UID), 4ème (GID) et 7ème champ (shell).
 
+Plutôt que d'utiliser une valeur fixe, la variable *uidsys* permet de définir l'UID minimal des utilisateurs dits "système". Le script analyse donc dynamiquement l'UID des utilisateurs, particulièrement cohérent avec ce passage du script car cet UID de référence peut varier en fonction de la distribution du système audité. Une double vérification permet en plus de définir:
+- Si la variable est vide (si jamais la disposition du fichier */etc/login.defs* est différente en fonction de la distribution)
+- Ou si la variable n'est pas un nombre.
+Une de ces deux situations associe ensuite la valeur de 1000 à la variable *uidsys*, car c'est une valeur par défaut dans la majorité des distributions (une phrase s'affiche pour informer l'utilisateur). 
+
 On met ensuite en place des compteurs, qui vont nous servir par la suite. 
 
 La boucle while qui suit, permet de lire le résultat de la commande précédente par le biais de la redirection *done <<< "$userid"*, présente à la fin de la boucle. Les champs interprétés par *$3, $4, $7* sont respectivement stockés dans les variables *var1 var2 var3*. 
@@ -201,17 +206,25 @@ Pour finir, la dernière condition permet de vérifier deux critères:
 - Si l'utilisateur possède un shell interactif (grâce à la variable *situation* définie)
 - Si l'utilisateur possède un UID inférieur à 1000, signe dans la grande majorité des distributions Linux d'un utilisateur système.
 
-Pour finir on retrouve plusieurs conditions d'affichage pour l'utilisateur du script, dépendant des différents compteurs établis. Il est important de noter que *$nb_systeme_shell_risque -gt 1* prend donc en compte "root", qui possède habituellement un shell interactif, il ne serait donc pas pertinent d'afficher un message d'erreur si on avait *$nb_systeme_shell_risque -gt 0*.
+Une autre condition permet d'exclure "root" du compteur précédant, étant donné qu'il est courant que cet utilisateur possède un shell interactif. C'est dans ce cadre qu'a été ajouté le premier champ à la commande *awk* et que la variable *var0* à été ajoutée à la boucle (pour analyser le nom de l'utilisateur traité à chaque tour).
+
+Pour finir on retrouve plusieurs conditions d'affichage pour l'utilisateur du script, dépendant des différents compteurs établis. 
 
 ```bash
-userid=$(awk -F':' '{ print $3, $4, $7}' /etc/passwd)
+userid=$(awk -F':' '{ print $1, $3, $4, $7}' /etc/passwd)
+
+uidsys=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}')
+if [[ -z "$uidsys" ]] || [[ ! "$uidsys" =~ ^-?[0-9]+$ ]]; then
+uidsys=1000
+echo "[INFO] Impossible de déterminer UID_MIN sur ce système, valeur par défaut de 1000 utilisée."
+fi
 
 nb_uid_root=0
 nb_shell_interactif=0
 nb_gid_root=0
 nb_systeme_shell_risque=0
 
-while read -r var1 var2 var3
+while read -r var0 var1 var2 var3
 do
 if [[ "$var1" -eq 0 ]]; then
 nb_uid_root=$((nb_uid_root + 1))
@@ -225,8 +238,11 @@ fi
 if [[ "$var2" -eq 0 ]]; then
 nb_gid_root=$((nb_gid_root + 1))
 fi
-if [[ $situation == "pas ok" && $var1 -lt 1000 ]]; then
+if [[ $situation == "pas ok" && $var1 -lt $uidsys ]]; then
 nb_systeme_shell_risque=$((nb_systeme_shell_risque + 1))
+fi
+if [[ "$var0" == "root" && $situation == "pas ok" ]]; then
+nb_systeme_shell_risque=$((nb_systeme_shell_risque - 1))
 fi
 done <<< "$userid"
 
@@ -251,14 +267,14 @@ fi
 if [[ $nb_systeme_shell_risque -gt 1 ]]; then
 echo "[ATTENTION] $nb_systeme_shell_risque compte(s) système (UID < 1000) possède(nt) un shell interactif — vérification manuelle requise."
 else
-echo "[OK] Aucun compte système (UID < 1000) ne possède de shell interactif."
+echo "[OK] Pas plus d'un compte système (UID < 1000) ne possède de shell interactif."
 fi 
 ```
 
 **Limites connues**
 
-2. Alpine Linux n'a pas été vérifié dans nos recherches
-On avait explicitement noté que la valeur pour Alpine restait "non documentée" dans les sources qu'on avait consultées — donc pour ce gestionnaire précis (apk), on ne peut pas confirmer avec certitude que 1000 est la bonne limite.
+La principale limite de cette partie du script réside dans l'incertitude gravitant autour du fichier */etc/login.defs*, tant on ne peut pas anticiper sa prédisposition sans avoir accès à l'ensemble des distributions traitées dans ce script, représentant une véritable faille, bien qu'une valeur de référence soit utilisée et qu'une indication apparait à l'utilisateur. 
 
-3. D'anciennes versions de certaines distributions utilisaient 500
-Rappelle-toi qu'on avait noté que Red Hat utilisait historiquement 500 comme limite, avant d'aligner sa valeur par défaut sur 1000 dans ses versions plus récentes — donc un système Red Hat/CentOS ancien pourrait toujours utiliser cette ancienne convention.
+Ensuite, le script permet d'afficher et de signaler un nombre d'utilisateurs possédants des droit égaux à root (UID) et des groupes d'utilisateurs (GID), mais ne permet pas de juger la légitimité des utilisateurs.
+
+La condition permettant d'exclure root du compteur *nb_systeme_shell_risque*, teste que le nom de l'utilisateur soit *"root"*. Si sur un système particulier un administrateur aurait changé le nom d'un utilisateur pour l'appeler ainsi, alors cette partie du script ne serait pas pertinente (même si cette option est très peu probable, ça reste une limite à souligner). 
