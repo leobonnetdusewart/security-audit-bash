@@ -92,13 +92,13 @@ fi
 cbmaj=$(eval $maj)
 
 if [[ $? -ne 0 ]]; then
-echo "[ERREUR] Impossible de vérifier les mises à jour pour le gestionn>
+echo "[ERREUR] Impossible de vérifier les mises à jour pour le gestionnaire $gestionnaire."
 else
 nblignes=$(echo "$cbmaj" | wc -l)
 if [[ $nblignes -eq 1 ]]; then
-echo "[OK] Aucune mise à jour de sécurité en attente pour le gestionnai>
+echo "[OK] Aucune mise à jour de sécurité en attente pour le gestionnaire de paquets $gestionnaire."
 else
-echo "[ATTENTION] $((nblignes - 1)) paquet(s) en attente de mise à jour>
+echo "[ATTENTION] $((nblignes - 1)) paquet(s) en attente de mise à jour."
 fi
 fi
 ```
@@ -142,7 +142,7 @@ fi
 for fichier in $std
 do
 resultat=$(eval $com "$fichier" 2>/dev/null)
-if [[ $? -ne 1 ]]; then
+if [[ $? -ne 0 ]]; then
 compteur=$((compteur + 1))
 fi
 done
@@ -151,6 +151,7 @@ if [[ $compteur -eq 0 ]]; then
 echo "[OK] Aucun binaire setuid non officiel détecté."
 else
 echo "[ATTENTION] $compteur binaire(s) setuid non rattaché(s) à un paquet officiel ont été détectés sur ce système. Vérification manuelle requise."
+fi
 ```
 **Limites connues**
 
@@ -179,7 +180,7 @@ Il est crucial de vérifier qu'aucun utilisateur ne possède les mêmes droits q
 
 Pour les mêmes raisons, le script va également identifier les groupes d'utilisateurs possédant les droits root (GID=0), pour éviter qu'un groupe ait accès à des fichiers/dossiers réservés à l'administration. Appartenir au groupe root est bien moins "grave" qu'avoir un UID de 0 et peut totalement être légitime pour un administrateur, il reste néanmoins intéressant de vérifier manuellement la légitimité des utilisateurs possédant cette caractéristique.
 
-Vérifier l'existence de shells interactifs pour des utilisateurs système est également cohérent avec notre objectif d'audit. En effet, ces comptes sont censés exister pour faire tourner un service précis et non pas pour qu'un humain/attaquant s'y connecte. La présence d'un shell interactif pour un de ces comptes (/bin/bash au lieu de /usr/sbin/nologin), pourrait représenter une véritable porte d'entrée exploitable. On va donc croiser deux critères : la présence d'un shell interactif, et un UID inférieur à 1000, cette combinaison permet d'identifier spécifiquement les comptes système qui ne devraient pas avoir cette capacité de connexion. 
+Vérifier l'existence de shells interactifs pour des utilisateurs système est également cohérent avec notre objectif d'audit. En effet, ces comptes sont censés exister pour faire tourner un service précis et non pas pour qu'un humain/attaquant s'y connecte. La présence d'un shell interactif pour un de ces comptes (/bin/bash au lieu de /usr/sbin/nologin), pourrait représenter une véritable porte d'entrée exploitable. On va donc croiser deux critères : la présence d'un shell interactif, et un UID inférieur à 1000, cette combinaison permet d'identifier spécifiquement les comptes système qui ne devraient pas avoir cette capacité de connexion. Il est à noter que le compte root possède, par défaut sur la grande majorité des distributions, un shell interactif.
 
 Le script va en plus vérifier l'existence de shells interactifs pour n'importe quel utilisateur (peu importe l'UID), particulièrement pertinent dans le scénario où un attaquant créerait un compte avec un UID normal (≥ 1000), donc invisible pour le croisement précédent, mais détectable via ce comptage total.
 
