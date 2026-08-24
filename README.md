@@ -171,12 +171,94 @@ Le fichier /etc/passwd est une base de données comportant des informations rép
 - Un champ dédié à un commentaire concernant la personne ou le compte
 - Le chemin vers le répertoire personnel de l'utilisateur
 - le programme qui est lancé chaque fois que l'utilisateur se connecte au système. Pour un utilisateur interactif, il s'agit généralement d'une interface en ligne de commande.
+(Wikipédia, s. d.)
 
 Les trois champs qui vont nous intéresser et être pertinents pour notre audit, sont ceux relatifs aux droits des utilisateurs (UID/GID) et celui relatif au shell de l'utilisateur. 
 
 Il est crucial de vérifier qu'aucun utilisateur ne possède les mêmes droits que root (UID=0) pour garantir la sécurité du système. En effet, un accès total et sans restriction à ce dernier permettrait à un utilisateur de lire, modifier ou supprimer absolument n'importe quel fichier sur le système. Un UID de 0 permettrait également à un attaquant de créer, modifier ou ajouter des utilisateurs, agir sur leurs mots de passe, supprimer des logs (donc des traces de son intrusion), ou encore d'installer n'importe quel logiciel avec n'importe quel niveau de privilèges. Ça représenterait donc un danger imminent pour le propriétaire du système, d'où l'importance de le détecter.
 
-Dans les mêmes raisons, le script va également identifier les groupe d'utilisateurs possédant les droits root (GID=0), pour éviter qu'un groupe ait accès à des fichiers/dossiers réservés à l'administration. Appartenir au groupe root est bien moins "grave" qu'avoir un UID de 0 et peut totalement être légitime pour un administrateur, il reste néanmoins intéressant de vérifier manuellement la légitimité des utilisateurs possédants cette caractéristique.
+Pour les mêmes raisons, le script va également identifier les groupes d'utilisateurs possédant les droits root (GID=0), pour éviter qu'un groupe ait accès à des fichiers/dossiers réservés à l'administration. Appartenir au groupe root est bien moins "grave" qu'avoir un UID de 0 et peut totalement être légitime pour un administrateur, il reste néanmoins intéressant de vérifier manuellement la légitimité des utilisateurs possédant cette caractéristique.
 
-Vérifier l'existence de shells interactifs pour des utilisateurs système est également cohérente avec notre objectif d'audit. En effet, ces comptes sont censés exister pour faire tourner un service précis et non pas pour qu'un humain/attaquant s'y connecte. La présence d'un shell interactif pour un de ces comptes (/bin/bash au lieu de /usr/sbin/nologin), pourrait représenter une véritable porte d'entrée exploitable. 
+Vérifier l'existence de shells interactifs pour des utilisateurs système est également cohérent avec notre objectif d'audit. En effet, ces comptes sont censés exister pour faire tourner un service précis et non pas pour qu'un humain/attaquant s'y connecte. La présence d'un shell interactif pour un de ces comptes (/bin/bash au lieu de /usr/sbin/nologin), pourrait représenter une véritable porte d'entrée exploitable. On va donc croiser deux critères : la présence d'un shell interactif, et un UID inférieur à 1000, cette combinaison permet d'identifier spécifiquement les comptes système qui ne devraient pas avoir cette capacité de connexion. 
 
+Le script va en plus vérifier l'existence de shells interactifs pour n'importe quel utilisateur (peu importe l'UID), particulièrement pertinent dans le scénario où un attaquant créerait un compte avec un UID normal (≥ 1000), donc invisible pour le croisement précédent, mais détectable via ce comptage total.
+
+**Choix technique et justification**
+
+L'utilisation de la commande *awk* est particulièrement pertinente dans le contexte actuel, tant cette commande permet, une fois couplée avec l'option *-F*, de traiter du texte structuré en colonnes/champs, en prenant en compte le séparateur de champs (ici ":"). Elle permet donc d'afficher le 3ème (UID), 4ème (GID) et 7ème champ (shell).
+
+On met ensuite en place des compteurs, qui vont nous servir par la suite. 
+
+La boucle while qui suit, permet de lire le résultat de la commande précédente par le biais de la redirection *done <<< "$userid"*, présente à la fin de la boucle. Les champs interprétés par *$3, $4, $7* sont respectivement stockés dans les variables *var1 var2 var3*. 
+
+La première condition permet de calculer le nombre d'utilisateurs possédant un UID de 0, équivalent donc à root. Ce nombre est ensuite stocké dans le compteur établi au préalable dans *nb_uid_root*. 
+
+La deuxième condition permet d'analyser le shell de chaque utilisateur, et de définir si on peut interagir avec. Pour garantir de la portabilité du script sur l'ensemble des distributions prises en charge depuis le début, on prend en compte tous les shells interactifs possibles. On ajoute une variable interne dans le cas où on peut interagir avec le shell, qu'on utilisera plus tard. Dans le même cas, on incrémente notre compteur *nb_shell_interactif*. 
+
+La condition suivante possède la même structure que la première et veille à analyser le GID de chaque utilisateur.
+
+Pour finir, la dernière condition permet de vérifier deux critères: 
+- Si l'utilisateur possède un shell interactif (grâce à la variable *situation* définie)
+- Si l'utilisateur possède un UID inférieur à 1000, signe dans la grande majorité des distributions Linux d'un utilisateur système.
+
+Pour finir on retrouve plusieurs conditions d'affichage pour l'utilisateur du script, dépendant des différents compteurs établis. Il est important de noter que *$nb_systeme_shell_risque -gt 1* prend donc en compte "root", qui possède habituellement un shell interactif, il ne serait donc pas pertinent d'afficher un message d'erreur si on avait *$nb_systeme_shell_risque -gt 0*.
+
+```bash
+userid=$(awk -F':' '{ print $3, $4, $7}' /etc/passwd)
+
+nb_uid_root=0
+nb_shell_interactif=0
+nb_gid_root=0
+nb_systeme_shell_risque=0
+
+while read -r var1 var2 var3
+do
+if [[ "$var1" -eq 0 ]]; then
+nb_uid_root=$((nb_uid_root + 1))
+fi
+if [[ "$var3" == "/bin/bash" || "$var3" == "/bin/sh" || "$var3" == "/bin/csh" || "$var3" == "/bin/tcsh" || "$var3" == "/bin/dash" ]]; then
+situation="pas ok"
+nb_shell_interactif=$((nb_shell_interactif + 1))
+else
+situation="ok"
+fi
+if [[ "$var2" -eq 0 ]]; then
+nb_gid_root=$((nb_gid_root + 1))
+fi
+if [[ $situation == "pas ok" && $var1 -lt 1000 ]]; then
+nb_systeme_shell_risque=$((nb_systeme_shell_risque + 1))
+fi
+done <<< "$userid"
+
+if [[ $nb_uid_root -eq 1 ]]; then
+echo "[OK] Un seul utilisateur possède les droits root (UID 0)."
+else
+echo "[ATTENTION] $nb_uid_root utilisateurs possèdent les droits root (UID 0) — vérification manuelle requise."
+fi
+
+if [[ $nb_shell_interactif -ge 2 ]]; then
+echo "[ATTENTION] $nb_shell_interactif utilisateurs possèdent un shell interactif — vérification manuelle requise."
+else
+echo "[OK] Aucun utilisateur superflu ne possède de shell interactif."
+fi
+
+if [[ $nb_gid_root -eq 1 ]]; then
+echo "[OK] Un seul utilisateur appartient au groupe root (GID 0)."
+else
+echo "[ATTENTION] $nb_gid_root utilisateurs appartiennent au groupe root (GID 0) — vérification manuelle requise."
+fi
+
+if [[ $nb_systeme_shell_risque -gt 1 ]]; then
+echo "[ATTENTION] $nb_systeme_shell_risque compte(s) système (UID < 1000) possède(nt) un shell interactif — vérification manuelle requise."
+else
+echo "[OK] Aucun compte système (UID < 1000) ne possède de shell interactif."
+fi 
+```
+
+**Limites connues**
+
+2. Alpine Linux n'a pas été vérifié dans nos recherches
+On avait explicitement noté que la valeur pour Alpine restait "non documentée" dans les sources qu'on avait consultées — donc pour ce gestionnaire précis (apk), on ne peut pas confirmer avec certitude que 1000 est la bonne limite.
+
+3. D'anciennes versions de certaines distributions utilisaient 500
+Rappelle-toi qu'on avait noté que Red Hat utilisait historiquement 500 comme limite, avant d'aligner sa valeur par défaut sur 1000 dans ses versions plus récentes — donc un système Red Hat/CentOS ancien pourrait toujours utiliser cette ancienne convention.
