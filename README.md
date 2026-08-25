@@ -75,7 +75,9 @@ L'utilisation de la variable spéciale "$?" permet de tester si la dernière com
 
 Pour calculer le nombre de paquets nécessitant une mise à jour, on utilise "wc -l" qui va compter le nombre de lignes que va renvoyer la commande. C'est cohérent, étant donné que les paquets nécessitant une mise à jour sont affichés un par un, chacun sur sa propre ligne.
 
-Pour finir, une simple condition afin d'afficher à l'utilisateur les informations pertinentes quant à l'audit. Notez ici qu'on affiche "nblignes - 1", correspondant en réalité à la ligne "Listing... Done" s'affichant mais ne représentant pas un paquet nécessitant une mise à jour.
+Une simple condition permet ensuite d'afficher à l'utilisateur les informations pertinentes quant à l'audit. Notez ici qu'on affiche "nblignes - 1", correspondant en réalité à la ligne "Listing... Done" s'affichant mais ne représentant pas un paquet nécessitant une mise à jour. 
+
+Pour finir, l'utilisation de la commande *read -p* permet d'interagir avec l'utilisateur, lui demandant de faire un choix entre *y* (pour "yes") et *n* (pour "no"). Le résultat de ce choix est stocké dans la variable *yn*. Case permet de manière générale de comparer une variable à plusieurs valeurs possibles, remplaçant une suite de *if/elif/else*. Ici, on cherche à savoir si l'entrée de l'utilisateur (dans la variable *yn*) représente un "y", un "n" ou une autre valeur. Dans le cas où l'utilisateur aurait entré *y*, la variable *$cbmaj*, comportant l'ensemble des paquets en attente de mise à jour s'affiche. Cette syntaxe sera utilisée plusieurs fois au cours du script, permettant une interaction avec l'utilisateur.
 
 ```Bash
 declare -A commandesOS
@@ -99,6 +101,12 @@ if [[ $nblignes -eq 1 ]]; then
 echo "[OK] Aucune mise à jour de sécurité en attente pour le gestionnaire de paquets $gestionnaire."
 else
 echo "[ATTENTION] $((nblignes - 1)) paquet(s) en attente de mise à jour."
+read -p "Voulez-vous voir la liste des paquets concernés ? (y/n) " yn
+case $yn in
+    [yY] ) echo "$cbmaj" ;;
+    [nN] ) ;;
+    * ) echo "Réponse invalide" ;;
+esac
 fi
 fi
 ```
