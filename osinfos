@@ -1,0 +1,230 @@
+#!/bin/bash
+
+# Détection automatique du gestionnaire de paquet
+detecter_gestionnaire() {
+declare -A informationsOS
+informationsOS[/etc/redhat-release]=yum
+informationsOS[/etc/arch-release]=pacman
+informationsOS[/etc/SuSE-release]=zypp
+informationsOS[/etc/debian_version]=apt-get
+informationsOS[/etc/alpine-release]=apk
+
+for f in ${!informationsOS[@]}
+do
+    if [[ -f $f ]];then
+gestionnaire=${informationsOS[$f]}
+echo Gestionnaire de paquet: $gestionnaire
+    fi
+done
+
+if [[ -z "$gestionnaire" ]]; then
+echo "[INCONNU] Aucun gestionnaire de paquets reconnu n'a été détecté sur ce système. L'audit des mises à jour ne peut pas être effectué."
+fi
+}
+
+#Calcul du nombre de mises à jour disponibles pour les paquets en fonction du gestionnaire
+verifier_maj() {
+declare -A commandesOS
+commandesOS[yum]="dnf list updates 2>/dev/null"
+commandesOS[pacman]="pacman -Qu 2>/dev/null"
+commandesOS[zypp]="zypper list-updates 2>/dev/null"
+commandesOS[apt-get]="apt list --upgradable 2>/dev/null"
+commandesOS[apk]="apk list -u 2>/dev/null"
+
+if [[ -v "commandesOS[$gestionnaire]" ]]; then
+maj=${commandesOS[$gestionnaire]}
+fi
+
+cbmaj=$(eval $maj)
+code_sortie=$?
+
+if [[ "$code_sortie" -ne 0 ]]; then
+echo "[ERREUR] Impossible de vérifier les mises à jour pour le gestionnaire $gestionnaire."
+else
+nblignes=$(echo "$cbmaj" | wc -l)
+if [[ $nblignes -eq 1 ]]; then
+echo "[OK] Aucune mise à jour de sécurité en attente pour le gestionnaire de paquets $gestionnaire."
+else
+echo "[ATTENTION] $((nblignes - 1)) paquet(s) en attente de mise à jour."
+read -p "Voulez-vous voir la liste des paquets concernés ? (y/n) " yn
+case $yn in
+    [yY] ) echo "$cbmaj" ;;
+    [nN] ) ;;
+    * ) echo "Réponse invalide" ;;
+esac
+fi
+fi
+}
+# Détection du nombre de binaires setuid non officiels
+verifier_setuid() {
+
+std=$(find / -xdev -perm -4000 -type f 2>/dev/null)
+compteur=0
+setuid_suspects=""
+
+declare -A proprio
+proprio[yum]="rpm -qf"
+proprio[pacman]="pacman -Qo"
+proprio[zypp]="zypper what-provides"
+proprio[apt-get]="dpkg -S"
+proprio[apk]="apk info --who-owns"
+
+if [[ -v "proprio[$gestionnaire]" ]]; then
+com=${proprio[$gestionnaire]}
+fi
+
+for fichier in $std
+do
+resultat=$(eval $com "$fichier" 2>/dev/null)
+if [[ $? -ne 0 ]]; then
+compteur=$((compteur + 1))
+setuid_suspects="$setuid_suspects$fichier"$'\n'
+fi
+done
+
+if [[ $compteur -eq 0 ]]; then
+echo "[OK] Aucun binaire setuid non officiel détecté."
+else
+echo "[ATTENTION] $compteur binaire(s) setuid non rattaché(s) à un paquet officiel ont été détectés sur ce système. Vérification manuelle requise."
+read -p "Voulez-vous voir la liste de ces binaires ? (y/n) " yn
+case $yn in
+    [yY] ) echo "$setuid_suspects" ;;
+    [nN] ) ;;
+    * ) echo "Réponse invalide" ;;
+esac
+fi
+}
+
+#Détection d'utilisateurs avec lUID de root
+verifier_comptes_privileges() {
+userid=$(awk -F':' '{ print $1, $3, $4, $7}' /etc/passwd)
+noms_uid_root=""
+noms_shell_interactif=""
+noms_gid_root=""
+
+uidsys=$(grep "^UID_MIN" /etc/login.defs | awk '{print $2}')
+
+if [[ -z "$uidsys" ]] || [[ ! "$uidsys" =~ ^-?[0-9]+$ ]]; then
+uidsys=1000
+echo "[INFO] Impossible de déterminer UID_MIN sur ce système, valeur par défaut de 1000 utilisée."
+fi
+
+nb_uid_root=0
+nb_shell_interactif=0
+nb_gid_root=0
+nb_systeme_shell_risque=0
+
+while read -r var0 var1 var2 var3
+do
+if [[ "$var1" -eq 0 ]]; then
+nb_uid_root=$((nb_uid_root + 1))
+noms_uid_root="$noms_uid_root$var0"$'\n'
+fi
+if [[ "$var3" == "/bin/bash" || "$var3" == "/bin/sh" || "$var3" == "/bin/csh" || "$var3" == "/bin/tcsh" || "$var3" == "/bin/dash" ]]; then
+situation="pas ok"
+nb_shell_interactif=$((nb_shell_interactif + 1))
+noms_shell_interactif="$noms_shell_interactif$var0"$'\n'
+else
+situation="ok"
+fi
+if [[ "$var2" -eq 0 ]]; then
+nb_gid_root=$((nb_gid_root + 1))
+noms_gid_root="$noms_gid_root$var0"$'\n'
+fi
+if [[ $situation == "pas ok" && $var1 -lt $uidsys ]]; then
+nb_systeme_shell_risque=$((nb_systeme_shell_risque + 1))
+fi
+if [[ "$var0" == "root" && $situation == "pas ok" ]]; then
+nb_systeme_shell_risque=$((nb_systeme_shell_risque - 1))
+fi
+done <<< "$userid"
+
+if [[ $nb_uid_root -eq 1 ]]; then
+echo "[OK] Un seul utilisateur possède les droits root (UID 0)."
+else
+echo "[ATTENTION] $nb_uid_root utilisateurs possèdent les droits root (UID 0) — vérification manuelle requise."
+echo "Liste de ces utilisateurs :"
+echo "$noms_uid_root"
+fi
+
+if [[ $nb_shell_interactif -ge 2 ]]; then
+echo "[ATTENTION] $nb_shell_interactif utilisateurs possèdent un shell interactif — vérification manuelle requise."
+echo "Liste de ces utilisateurs :"
+echo "$noms_shell_interactif"
+else
+echo "[OK] Aucun utilisateur superflu ne possède de shell interactif."
+fi
+
+if [[ $nb_gid_root -eq 1 ]]; then
+echo "[OK] Un seul utilisateur appartient au groupe root (GID 0)."
+else
+echo "[ATTENTION] $nb_gid_root utilisateurs appartiennent au groupe root (GID 0) — vérification manuelle requise."
+echo "Liste de ces utilisateurs :"
+echo "$noms_gid_root"
+fi
+
+if [[ $nb_systeme_shell_risque -gt 0 ]]; then
+echo "[ATTENTION] $nb_systeme_shell_risque compte(s) système (UID < 1000) possède(nt) un shell interactif — vérification manuelle requise."
+else
+echo "[OK] Aucun compte système (UID < 1000) ne possède de shell interactif."
+fi
+}
+
+#Vérification fichiers writable
+verifier_permissions_fichiers() {
+fichiers_writable=$(find / -xdev -perm -0002 -type f 2>/dev/null)
+
+noms_cron=""
+
+if [[ -z "$fichiers_writable" ]]; then
+echo "[OK] Aucun fichier accessible en écriture pour tous les utilisateurs."
+else
+nb_writable=$(echo "$fichiers_writable" | wc -l)
+echo "[ATTENTION] $nb_writable fichier(s) accessible(s) en écriture à tous les utilisateurs."
+read -p "Voulez vous voir ces fichiers? (y/n)" yn
+case $yn in
+[yY] ) echo "$fichiers_writable" ;;
+[nN] ) ;;
+* ) echo "Réponse invalide" ;;
+esac
+fi
+
+for fww in $fichiers_writable
+do
+if [[ "$fww" == "/etc/shadow" ]]; then
+echo "[ATTENTION] Le fichier /etc/shadow est accessible en écriture à tous les utilisateurs — risque critique de compromission des mots de passe."
+elif [[ "$fww" == "/etc/passwd" ]]; then
+echo "[ATTENTION] Le fichier /etc/passwd est accessible en écriture à tous les utilisateurs — risque critique de compromission du système."
+fi
+done
+
+if find /etc/shadow -perm -0004 2>/dev/null | grep -q .; then
+    echo "[ATTENTION] /etc/shadow est lisible par tous les utilisateurs !"
+else
+    echo "[OK] /etc/shadow n'est pas lisible par tous."
+fi
+
+emplacements_cron="/etc/crontab /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly /var/spool/cron"
+for emplacement in $emplacements_cron
+do
+resultat_cron=$(find "$emplacement" -perm -0002 2>/dev/null)
+if [[ -n "$resultat_cron" ]]; then
+noms_cron="$noms_cron$resultat_cron"$'\n'
+fi
+done
+
+nb_cron=$(echo "$noms_cron" | wc -l)
+if [[ -z "$noms_cron" ]]; then
+echo "[OK] Aucun cron écrivable par tous"
+else
+echo "[ATTENTION] $nb_cron accessible(s) et modifiable(s) par tous"
+echo "Liste des cron:"
+echo "$noms_cron"
+fi
+}
+
+detecter_gestionnaire
+verifier_maj
+verifier_setuid
+verifier_comptes_privileges
+verifier_permissions_fichiers
